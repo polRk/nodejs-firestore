@@ -33,7 +33,7 @@ import {DocumentReference} from './reference';
 import {Serializer} from './serializer';
 import {Timestamp} from './timestamp';
 import {parseGetAllArguments, Transaction} from './transaction';
-import {DocumentData, GapicClient, ReadOptions, Settings} from './types';
+import {ApiMapValue, DocumentData, GapicClient, GrpcError, ProtobufJsValue, ReadOptions, Settings} from './types';
 import {requestTag} from './util';
 import {validateBoolean, validateFunction, validateInteger, validateMinNumberOfArguments, validateObject, validateString,} from './validate';
 import {WriteBatch} from './write-batch';
@@ -78,12 +78,12 @@ setLibVersion(libVersion);
 /*!
  * @see v1
  */
-let v1;  // Lazy-loaded in `_runRequest()`
+let v1: unknown;  // Lazy-loaded in `_runRequest()`
 
 /*!
  * @see v1beta1
  */
-let v1beta1;  // Lazy-loaded in `_runRequest()`
+let v1beta1: unknown;  // Lazy-loaded upon access.
 
 /*!
  * HTTP header for the resource prefix to improve routing and project isolation
@@ -203,9 +203,6 @@ const GRPC_UNAVAILABLE = 14;
  * Full quickstart example:
  */
 export class Firestore {
-  /** @private */
-  readonly _validator;
-
   /**
    * A client pool to distribute requests over multiple GAPIC clients in order
    * to work around a connection limit of 100 concurrent requests per client.
@@ -479,17 +476,31 @@ export class Firestore {
    * @returns A QueryDocumentSnapshot for existing documents, otherwise a
    * DocumentSnapshot.
    */
+  snapshot_(documentOrName: string): DocumentSnapshot;
   snapshot_(
-      documentOrName: api.IDocument|string,
-      readTime?: google.protobuf.ITimestamp,
+      documentOrName: string, readTime: google.protobuf.ITimestamp,
+      encoding?: 'protobufJS'): DocumentSnapshot;
+  snapshot_(documentOrName: string, readTime: string, encoding: 'json'):
+      DocumentSnapshot;
+  snapshot_(
+      documentOrName: api.IDocument, readTime: google.protobuf.ITimestamp,
+      encoding?: 'protobufJS'): DocumentSnapshot;
+  snapshot_(
+      documentOrName: {[k: string]: unknown}, readTime: string,
+      encoding: 'json'): DocumentSnapshot;
+  snapshot_(
+      documentOrName: api.IDocument|{[k: string]: unknown}|string,
+      readTime?: google.protobuf.ITimestamp|string,
       encoding?: 'json'|'protobufJS'): DocumentSnapshot {
     // TODO: Assert that Firestore Project ID is valid.
 
-    let convertTimestamp;
-    let convertDocument;
+    let convertTimestamp: (
+        timestampValue?: string|google.protobuf.ITimestamp,
+        argumentName?: string) => google.protobuf.ITimestamp | undefined;
+    let convertDocument: (data: ApiMapValue) => ApiMapValue;
 
     if (encoding === undefined || encoding === 'protobufJS') {
-      convertTimestamp = data => data;
+      convertTimestamp = data => data as google.protobuf.ITimestamp;
       convertDocument = data => data;
     } else if (encoding === 'json') {
       // Google Cloud Functions calls us with Proto3 JSON format data, which we
@@ -509,18 +520,22 @@ export class Firestore {
           this, ResourcePath.fromSlashSeparatedString(documentOrName));
     } else {
       document.ref = new DocumentReference(
-          this, ResourcePath.fromSlashSeparatedString(documentOrName.name!));
-      document.fieldsProto =
-          documentOrName.fields ? convertDocument(documentOrName.fields) : {};
+          this,
+          ResourcePath.fromSlashSeparatedString(documentOrName.name as string));
+      document.fieldsProto = documentOrName.fields ?
+          convertDocument(documentOrName.fields as ApiMapValue) :
+          {};
       document.createTime = Timestamp.fromProto(convertTimestamp(
-          documentOrName.createTime, 'documentOrName.createTime'));
+          documentOrName.createTime as string | google.protobuf.ITimestamp,
+          'documentOrName.createTime')!);
       document.updateTime = Timestamp.fromProto(convertTimestamp(
-          documentOrName.updateTime, 'documentOrName.updateTime'));
+          documentOrName.updateTime as string | google.protobuf.ITimestamp,
+          'documentOrName.updateTime')!);
     }
 
     if (readTime) {
       document.readTime =
-          Timestamp.fromProto(convertTimestamp(readTime, 'readTime'));
+          Timestamp.fromProto(convertTimestamp(readTime, 'readTime')!);
     }
 
     return document.build();
@@ -599,7 +614,7 @@ export class Firestore {
 
     const transaction = new Transaction(this, previousTransaction);
     const requestTag = transaction.requestTag;
-    let result;
+    let result: Promise<T>;
 
     --attemptsRemaining;
 
@@ -885,7 +900,7 @@ export class Firestore {
    */
   private _detectProjectId(gapicClient: GapicClient): Promise<string> {
     return new Promise((resolve, reject) => {
-      gapicClient.getProjectId((err, projectId) => {
+      gapicClient.getProjectId((err: Error, projectId: string) => {
         if (err) {
           logger(
               'Firestore._detectProjectId', null,
@@ -912,7 +927,9 @@ export class Firestore {
     let decoratedRequest = extend(true, {}, request);
     decoratedRequest =
         replaceProjectIdToken(decoratedRequest, this._referencePath!.projectId);
-    const decoratedGax = {otherArgs: {headers: {}}};
+    const decoratedGax: {
+      otherArgs: {headers: {[k: string]: string}}
+    } = {otherArgs: {headers: {}}};
     decoratedGax.otherArgs.headers[CLOUD_RESOURCE_HEADER] = this.formattedName;
 
     return {request: decoratedRequest, gax: decoratedGax};
@@ -1126,7 +1143,7 @@ export class Firestore {
               'Firestore.request', requestTag, 'Sending request: %j',
               decorated.request);
           gapicClient[methodName](
-              decorated.request, decorated.gax, (err, result) => {
+              decorated.request, decorated.gax, (err: GrpcError, result: T) => {
                 if (err) {
                   logger(
                       'Firestore.request', requestTag, 'Received error:', err);

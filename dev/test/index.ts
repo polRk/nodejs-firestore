@@ -18,11 +18,14 @@ import {expect} from 'chai';
 import * as extend from 'extend';
 import * as gax from 'google-gax';
 
-import * as Firestore from '../src';
-import {FieldPath} from '../src';
+import * as proto from '../protos/firestore_proto_api';
+import api = proto.google.firestore.v1;
+
+import * as FirebaseFirestore from '../src';
+import {DocumentData, DocumentSnapshot, FieldPath} from '../src';
 import {ResourcePath} from '../src/path';
 import {GrpcError} from '../src/types';
-import {createInstance, document, DOCUMENT_NAME, found, InvalidApiUsage, missing, stream} from './util/helpers';
+import {ApiOverride, createInstance, document, DOCUMENT_NAME, found, InvalidApiUsage, missing, stream} from './util/helpers';
 
 const {grpc} = new gax.GrpcClient({});
 
@@ -35,7 +38,7 @@ const DEFAULT_SETTINGS = {
 };
 
 // Change the argument to 'console.log' to enable debug output.
-Firestore.setLogFunction(() => {});
+FirebaseFirestore.setLogFunction(() => {});
 
 const bytesData = Buffer.from('AQI=', 'base64');
 
@@ -210,15 +213,15 @@ const allSupportedTypesInput = {
   objectValue: {foo: 'bar'},
   emptyObject: {},
   dateValue: new Date('Mar 18, 1985 08:20:00.123 GMT+0100 (CET)'),
-  timestampValue: Firestore.Timestamp.fromDate(
+  timestampValue: FirebaseFirestore.Timestamp.fromDate(
       new Date('Mar 18, 1985 08:20:00.123 GMT+0100 (CET)')),
-  pathValue: new Firestore.DocumentReference(
+  pathValue: new FirebaseFirestore.DocumentReference(
       {formattedName: DATABASE_ROOT} as any,  // tslint:disable-line no-any
       new ResourcePath(PROJECT_ID, '(default)', 'collection', 'document')),
   arrayValue: ['foo', 42, 'bar'],
   emptyArray: [],
   nilValue: null,
-  geoPointValue: new Firestore.GeoPoint(50.1430847, -122.947778),
+  geoPointValue: new FirebaseFirestore.GeoPoint(50.1430847, -122.947778),
   bytesValue: Buffer.from([0x1, 0x2]),
 };
 
@@ -232,28 +235,28 @@ const allSupportedTypesOutput = {
   negativeInfinityValue: -Infinity,
   objectValue: {foo: 'bar'},
   emptyObject: {},
-  dateValue: Firestore.Timestamp.fromDate(
+  dateValue: FirebaseFirestore.Timestamp.fromDate(
       new Date('Mar 18, 1985 08:20:00.123 GMT+0100 (CET)')),
-  timestampValue: Firestore.Timestamp.fromDate(
+  timestampValue: FirebaseFirestore.Timestamp.fromDate(
       new Date('Mar 18, 1985 08:20:00.123 GMT+0100 (CET)')),
-  pathValue: new Firestore.DocumentReference(
+  pathValue: new FirebaseFirestore.DocumentReference(
       {formattedName: DATABASE_ROOT} as any,  // tslint:disable-line no-any
       new ResourcePath(PROJECT_ID, '(default)', 'collection', 'document')),
   arrayValue: ['foo', 42, 'bar'],
   emptyArray: [],
   nilValue: null,
-  geoPointValue: new Firestore.GeoPoint(50.1430847, -122.947778),
+  geoPointValue: new FirebaseFirestore.GeoPoint(50.1430847, -122.947778),
   bytesValue: Buffer.from([0x1, 0x2]),
 };
 
 describe('instantiation', () => {
   it('creates instance', () => {
-    const firestore = new Firestore.Firestore(DEFAULT_SETTINGS);
-    expect(firestore).to.be.an.instanceOf(Firestore.Firestore);
+    const firestore = new FirebaseFirestore.Firestore(DEFAULT_SETTINGS);
+    expect(firestore).to.be.an.instanceOf(FirebaseFirestore.Firestore);
   });
 
   it('merges settings', () => {
-    const firestore = new Firestore.Firestore(DEFAULT_SETTINGS);
+    const firestore = new FirebaseFirestore.Firestore(DEFAULT_SETTINGS);
     firestore.settings({foo: 'bar'});
 
     expect(firestore._settings.projectId).to.equal(PROJECT_ID);
@@ -261,7 +264,7 @@ describe('instantiation', () => {
   });
 
   it('can only call settings() once', () => {
-    const firestore = new Firestore.Firestore(DEFAULT_SETTINGS);
+    const firestore = new FirebaseFirestore.Firestore(DEFAULT_SETTINGS);
     firestore.settings({});
 
     expect(() => firestore.settings({}))
@@ -270,7 +273,7 @@ describe('instantiation', () => {
   });
 
   it('cannot change settings after client initialized', () => {
-    const firestore = new Firestore.Firestore(DEFAULT_SETTINGS);
+    const firestore = new FirebaseFirestore.Firestore(DEFAULT_SETTINGS);
     firestore['_runRequest'](() => Promise.resolve());
 
     expect(() => firestore.settings({}))
@@ -283,11 +286,11 @@ describe('instantiation', () => {
       const settings = Object.assign({}, DEFAULT_SETTINGS, {
         projectId: 1337,
       });
-      new Firestore.Firestore(settings);
+      new FirebaseFirestore.Firestore(settings);
     }).to.throw('Argument "settings.projectId" is not a valid string.');
 
     expect(() => {
-      new Firestore.Firestore(DEFAULT_SETTINGS).settings({
+      new FirebaseFirestore.Firestore(DEFAULT_SETTINGS).settings({
         projectId: 1337
       } as InvalidApiUsage);
     }).to.throw('Argument "settings.projectId" is not a valid string.');
@@ -298,13 +301,13 @@ describe('instantiation', () => {
       const settings = Object.assign({}, DEFAULT_SETTINGS, {
         timestampsInSnapshots: 1337,
       });
-      new Firestore.Firestore(settings);
+      new FirebaseFirestore.Firestore(settings);
     })
         .to.throw(
             'Argument "settings.timestampsInSnapshots" is not a valid boolean.');
 
     expect(() => {
-      new Firestore.Firestore(DEFAULT_SETTINGS).settings({
+      new FirebaseFirestore.Firestore(DEFAULT_SETTINGS).settings({
         timestampsInSnapshots: 1337 as InvalidApiUsage
       });
     })
@@ -313,7 +316,7 @@ describe('instantiation', () => {
   });
 
   it('uses project id from constructor', () => {
-    const firestore = new Firestore.Firestore(DEFAULT_SETTINGS);
+    const firestore = new FirebaseFirestore.Firestore(DEFAULT_SETTINGS);
 
     return firestore['_runRequest'](() => {
       expect(firestore.formattedName)
@@ -323,7 +326,7 @@ describe('instantiation', () => {
   });
 
   it('detects project id', () => {
-    const firestore = new Firestore.Firestore({
+    const firestore = new FirebaseFirestore.Firestore({
       sslCreds: grpc.credentials.createInsecure(),
       keyFilename: __dirname + '/fake-certificate.json',
     });
@@ -341,7 +344,7 @@ describe('instantiation', () => {
   });
 
   it('uses project id from gapic client', () => {
-    const firestore = new Firestore.Firestore({
+    const firestore = new FirebaseFirestore.Firestore({
       sslCreds: grpc.credentials.createInsecure(),
       keyFilename: './test/fake-certificate.json',
     });
@@ -349,7 +352,10 @@ describe('instantiation', () => {
     expect(firestore.formattedName)
         .to.equal('projects/{{projectId}}/databases/(default)');
 
-    const gapicClient = {getProjectId: callback => callback(null, PROJECT_ID)};
+    const gapicClient = {
+      getProjectId: (callback: (err: GrpcError|null, resp?: string) => void) =>
+          callback(null, PROJECT_ID)
+    };
 
     return firestore['_detectProjectId'](gapicClient).then(projectId => {
       expect(projectId).to.equal(PROJECT_ID);
@@ -357,7 +363,7 @@ describe('instantiation', () => {
   });
 
   it('uses project ID from settings()', () => {
-    const firestore = new Firestore.Firestore({
+    const firestore = new FirebaseFirestore.Firestore({
       sslCreds: grpc.credentials.createInsecure(),
       keyFilename: './test/fake-certificate.json',
     });
@@ -369,13 +375,14 @@ describe('instantiation', () => {
   });
 
   it('handles error from project ID detection', () => {
-    const firestore = new Firestore.Firestore({
+    const firestore = new FirebaseFirestore.Firestore({
       sslCreds: grpc.credentials.createInsecure(),
       keyFilename: './test/fake-certificate.json',
     });
 
     const gapicClient = {
-      getProjectId: callback => callback(new Error('Injected Error'))
+      getProjectId: (callback: (err: GrpcError|null, resp?: string) => void) =>
+          callback(new Error('Injected Error'))
     };
 
     return firestore['_detectProjectId'](gapicClient)
@@ -385,47 +392,50 @@ describe('instantiation', () => {
 
   it('exports all types', () => {
     // Ordering as per firestore.d.ts
-    expect((Firestore.Firestore)).to.exist;
-    expect(Firestore.Firestore.name).to.equal('Firestore');
-    expect((Firestore.Timestamp)).to.exist;
-    expect(Firestore.Timestamp.name).to.equal('Timestamp');
-    expect((Firestore.GeoPoint)).to.exist;
-    expect(Firestore.GeoPoint.name).to.equal('GeoPoint');
-    expect((Firestore.Transaction)).to.exist;
-    expect(Firestore.Transaction.name).to.equal('Transaction');
-    expect((Firestore.WriteBatch)).to.exist;
-    expect(Firestore.WriteBatch.name).to.equal('WriteBatch');
-    expect((Firestore.DocumentReference)).to.exist;
-    expect(Firestore.DocumentReference.name).to.equal('DocumentReference');
-    expect((Firestore.WriteResult)).to.exist;
-    expect(Firestore.WriteResult.name).to.equal('WriteResult');
-    expect((Firestore.DocumentSnapshot)).to.exist;
-    expect(Firestore.DocumentSnapshot.name).to.equal('DocumentSnapshot');
-    expect((Firestore.QueryDocumentSnapshot)).to.exist;
-    expect(Firestore.QueryDocumentSnapshot.name)
+    expect((FirebaseFirestore.Firestore)).to.exist;
+    expect(FirebaseFirestore.Firestore.name).to.equal('Firestore');
+    expect((FirebaseFirestore.Timestamp)).to.exist;
+    expect(FirebaseFirestore.Timestamp.name).to.equal('Timestamp');
+    expect((FirebaseFirestore.GeoPoint)).to.exist;
+    expect(FirebaseFirestore.GeoPoint.name).to.equal('GeoPoint');
+    expect((FirebaseFirestore.Transaction)).to.exist;
+    expect(FirebaseFirestore.Transaction.name).to.equal('Transaction');
+    expect((FirebaseFirestore.WriteBatch)).to.exist;
+    expect(FirebaseFirestore.WriteBatch.name).to.equal('WriteBatch');
+    expect((FirebaseFirestore.DocumentReference)).to.exist;
+    expect(FirebaseFirestore.DocumentReference.name)
+        .to.equal('DocumentReference');
+    expect((FirebaseFirestore.WriteResult)).to.exist;
+    expect(FirebaseFirestore.WriteResult.name).to.equal('WriteResult');
+    expect((FirebaseFirestore.DocumentSnapshot)).to.exist;
+    expect(FirebaseFirestore.DocumentSnapshot.name)
+        .to.equal('DocumentSnapshot');
+    expect((FirebaseFirestore.QueryDocumentSnapshot)).to.exist;
+    expect(FirebaseFirestore.QueryDocumentSnapshot.name)
         .to.equal('QueryDocumentSnapshot');
-    expect((Firestore.Query)).to.exist;
-    expect(Firestore.Query.name).to.equal('Query');
-    expect(Firestore.QuerySnapshot).to.exist;
-    expect(Firestore.QuerySnapshot.name).to.equal('QuerySnapshot');
-    expect((Firestore.CollectionReference)).to.exist;
-    expect(Firestore.CollectionReference.name).to.equal('CollectionReference');
-    expect((Firestore.FieldValue)).to.exist;
-    expect(Firestore.FieldValue.name).to.equal('FieldValue');
-    expect((Firestore.FieldPath)).to.exist;
-    expect(Firestore.Firestore.name).to.equal('Firestore');
-    expect(Firestore.FieldValue.serverTimestamp().isEqual(
-               Firestore.FieldValue.delete()))
+    expect((FirebaseFirestore.Query)).to.exist;
+    expect(FirebaseFirestore.Query.name).to.equal('Query');
+    expect(FirebaseFirestore.QuerySnapshot).to.exist;
+    expect(FirebaseFirestore.QuerySnapshot.name).to.equal('QuerySnapshot');
+    expect((FirebaseFirestore.CollectionReference)).to.exist;
+    expect(FirebaseFirestore.CollectionReference.name)
+        .to.equal('CollectionReference');
+    expect((FirebaseFirestore.FieldValue)).to.exist;
+    expect(FirebaseFirestore.FieldValue.name).to.equal('FieldValue');
+    expect((FirebaseFirestore.FieldPath)).to.exist;
+    expect(FirebaseFirestore.Firestore.name).to.equal('Firestore');
+    expect(FirebaseFirestore.FieldValue.serverTimestamp().isEqual(
+               FirebaseFirestore.FieldValue.delete()))
         .to.be.false;
   });
 });
 
 describe('serializer', () => {
   it('supports all types', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       commit: (request, options, callback) => {
         expect(allSupportedTypesProtobufJs.fields)
-            .to.deep.eq(request.writes[0].update.fields);
+            .to.deep.eq(request.writes![0].update!.fields);
         callback(null, {
           commitTime: {},
           writeResults: [
@@ -444,15 +454,15 @@ describe('serializer', () => {
 });
 
 describe('snapshot_() method', () => {
-  let firestore;
+  let firestore: FirebaseFirestore.Firestore;
 
-  function verifyAllSupportedTypes(actualObject) {
+  function verifyAllSupportedTypes(actualObject: DocumentSnapshot) {
     const expected = extend(true, {}, allSupportedTypesOutput);
     // Deep Equal doesn't support matching instances of DocumentRefs, so we
     // compare them manually and remove them from the resulting object.
     expect(actualObject.get('pathValue').formattedName)
         .to.equal(expected.pathValue.formattedName);
-    const data = actualObject.data();
+    const data = actualObject.data()!;
     delete data.pathValue;
     delete expected.pathValue;
     expect(data).to.deep.eq(expected);
@@ -462,14 +472,14 @@ describe('snapshot_() method', () => {
     expect(data.geoPointValue.latitude).to.equal(50.1430847);
     expect(data.geoPointValue.longitude).to.equal(-122.947778);
     expect(data.geoPointValue.isEqual(
-               new Firestore.GeoPoint(50.1430847, -122.947778)))
+               new FirebaseFirestore.GeoPoint(50.1430847, -122.947778)))
         .to.be.true;
   }
 
   beforeEach(() => {
     // Unlike most other tests, we don't call `ensureClient` since the
     // `snapshot_` method does not require a GAPIC client.
-    firestore = new Firestore.Firestore({
+    firestore = new FirebaseFirestore.Firestore({
       projectId: PROJECT_ID,
       sslCreds: grpc.credentials.createInsecure(),
       keyFilename: './test/fake-certificate.json',
@@ -483,9 +493,12 @@ describe('snapshot_() method', () => {
 
     expect(doc.exists).to.be.true;
     expect({foo: bytesData}).to.deep.eq(doc.data());
-    expect(doc.createTime.isEqual(new Firestore.Timestamp(1, 2))).to.be.true;
-    expect(doc.updateTime.isEqual(new Firestore.Timestamp(3, 4))).to.be.true;
-    expect(doc.readTime.isEqual(new Firestore.Timestamp(5, 6))).to.be.true;
+    expect(doc.createTime!.isEqual(new FirebaseFirestore.Timestamp(1, 2)))
+        .to.be.true;
+    expect(doc.updateTime!.isEqual(new FirebaseFirestore.Timestamp(3, 4)))
+        .to.be.true;
+    expect(doc.readTime.isEqual(new FirebaseFirestore.Timestamp(5, 6)))
+        .to.be.true;
   });
 
   it('handles Proto3 JSON together with existing types', () => {
@@ -510,13 +523,16 @@ describe('snapshot_() method', () => {
     expect(doc.exists).to.be.true;
     expect(doc.data()).to.deep.eq({
       a: bytesData,
-      b: Firestore.Timestamp.fromDate(new Date('1985-03-18T07:20:00.000Z')),
+      b: FirebaseFirestore.Timestamp.fromDate(
+          new Date('1985-03-18T07:20:00.000Z')),
       c: bytesData,
     });
-    expect(doc.createTime.isEqual(new Firestore.Timestamp(1, 2000000)))
+    expect(doc.createTime!.isEqual(new FirebaseFirestore.Timestamp(1, 2000000)))
         .to.be.true;
-    expect(doc.updateTime.isEqual(new Firestore.Timestamp(3, 4000))).to.be.true;
-    expect(doc.readTime.isEqual(new Firestore.Timestamp(5, 6))).to.be.true;
+    expect(doc.updateTime!.isEqual(new FirebaseFirestore.Timestamp(3, 4000)))
+        .to.be.true;
+    expect(doc.readTime.isEqual(new FirebaseFirestore.Timestamp(5, 6)))
+        .to.be.true;
   });
 
   it('deserializes all supported types from Protobuf JS', () => {
@@ -579,14 +595,15 @@ describe('snapshot_() method', () => {
         '1970-01-01T00:00:05.000000006Z', 'json');
 
     expect(doc.exists).to.be.false;
-    expect(doc.readTime.isEqual(new Firestore.Timestamp(5, 6))).to.be.true;
+    expect(doc.readTime.isEqual(new FirebaseFirestore.Timestamp(5, 6)))
+        .to.be.true;
   });
 
   it('handles invalid encoding format ', () => {
     expect(() => {
       firestore.snapshot_(
           `${DATABASE_ROOT}/documents/collectionId/doc`,
-          '1970-01-01T00:00:05.000000006Z', 'ascii');
+          '1970-01-01T00:00:05.000000006Z', 'ascii' as InvalidApiUsage);
     })
         .to.throw(
             'Unsupported encoding format. Expected "json" or "protobufJS", but was "ascii".');
@@ -594,7 +611,7 @@ describe('snapshot_() method', () => {
 });
 
 describe('doc() method', () => {
-  let firestore;
+  let firestore: FirebaseFirestore.Firestore;
 
   beforeEach(() => {
     return createInstance().then(firestoreInstance => {
@@ -604,11 +621,12 @@ describe('doc() method', () => {
 
   it('returns DocumentReference', () => {
     const documentRef = firestore.doc('collectionId/documentId');
-    expect(documentRef).to.be.an.instanceOf(Firestore.DocumentReference);
+    expect(documentRef)
+        .to.be.an.instanceOf(FirebaseFirestore.DocumentReference);
   });
 
   it('requires document path', () => {
-    expect(() => firestore.doc())
+    expect(() => (firestore as InvalidApiUsage).doc())
         .to.throw(
             'Argument "documentPath" is not a valid resource path. Path must be a non-empty string.');
   });
@@ -633,7 +651,7 @@ describe('doc() method', () => {
 });
 
 describe('collection() method', () => {
-  let firestore;
+  let firestore: FirebaseFirestore.Firestore;
 
   beforeEach(() => {
     return createInstance().then(firestoreInstance => {
@@ -643,11 +661,12 @@ describe('collection() method', () => {
 
   it('returns collection', () => {
     const collection = firestore.collection('col1/doc1/col2');
-    expect(collection).to.be.an.instanceOf(Firestore.CollectionReference);
+    expect(collection)
+        .to.be.an.instanceOf(FirebaseFirestore.CollectionReference);
   });
 
   it('requires collection id', () => {
-    expect(() => firestore.collection())
+    expect(() => (firestore as InvalidApiUsage).collection())
         .to.throw(
             'Argument "collectionPath" is not a valid resource path. Path must be a non-empty string.');
   });
@@ -669,7 +688,7 @@ describe('collection() method', () => {
 
 describe('listCollections() method', () => {
   it('returns collections', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       listCollectionIds: (request, options, callback) => {
         expect(request).to.deep.eq({
           parent: `projects/${PROJECT_ID}/databases/(default)/documents`,
@@ -690,7 +709,8 @@ describe('listCollections() method', () => {
 });
 
 describe('getAll() method', () => {
-  function resultEquals(result, ...docs) {
+  function resultEquals(
+      result: DocumentSnapshot[], ...docs: api.IBatchGetDocumentsResponse[]) {
     expect(result.length).to.equal(arguments.length - 1);
 
     for (let i = 0; i < result.length; ++i) {
@@ -707,7 +727,7 @@ describe('getAll() method', () => {
   }
 
   it('accepts single document', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: () => {
         return stream(found('documentId'));
       }
@@ -722,7 +742,7 @@ describe('getAll() method', () => {
   });
 
   it('verifies response', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: () => {
         return stream(found('documentId2'));
       }
@@ -742,7 +762,7 @@ describe('getAll() method', () => {
   });
 
   it('handles stream exception during initialization', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: () => {
         return stream(new Error('Expected exception'));
       }
@@ -760,7 +780,7 @@ describe('getAll() method', () => {
   });
 
   it('handles stream exception after initialization', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: () => {
         return stream(found('documentId'), new Error('Expected exception'));
       }
@@ -778,7 +798,7 @@ describe('getAll() method', () => {
   });
 
   it('handles serialization error', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: () => {
         return stream(found('documentId'));
       }
@@ -819,11 +839,11 @@ describe('getAll() method', () => {
       /* Unauthenticated */ 16: 1,
     };
 
-    const actualErrorAttempts = {};
+    const actualErrorAttempts: {[k: number]: number} = {};
 
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: request => {
-        const errorCode = Number(request.documents[0].split('/').pop());
+        const errorCode = Number(request.documents![0].split('/').pop());
         actualErrorAttempts[errorCode] =
             (actualErrorAttempts[errorCode] || 0) + 1;
         const error = new GrpcError('Expected exception');
@@ -869,19 +889,20 @@ describe('getAll() method', () => {
   });
 
   it('accepts array', () => {
-    const overrides = {batchGetDocuments: () => stream(found('documentId'))};
+    const overrides:
+        ApiOverride = {batchGetDocuments: () => stream(found('documentId'))};
 
     return createInstance(overrides).then(firestore => {
       return (firestore as InvalidApiUsage)
           .getAll([firestore.doc('collectionId/documentId')])
-          .then(result => {
+          .then((result: DocumentSnapshot[]) => {
             resultEquals(result, found('documentId'));
           });
     });
   });
 
   it('returns not found for missing documents', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: () => stream(found('exists'), missing('missing'))
     };
 
@@ -897,7 +918,7 @@ describe('getAll() method', () => {
   });
 
   it('returns results in order', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: () => {
         return stream(
             // Note that these are out of order.
@@ -921,9 +942,9 @@ describe('getAll() method', () => {
   });
 
   it('accepts same document multiple times', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: request => {
-        expect(request.documents.length).to.equal(2);
+        expect(request.documents!.length).to.equal(2);
         return stream(found('a'), found('b'));
       }
     };
@@ -941,9 +962,9 @@ describe('getAll() method', () => {
   });
 
   it('applies field mask', () => {
-    const overrides = {
+    const overrides: ApiOverride = {
       batchGetDocuments: request => {
-        expect(request.mask.fieldPaths).to.have.members([
+        expect(request.mask!.fieldPaths).to.have.members([
           'foo.bar', '`foo.bar`'
         ]);
         return stream(found('a'));

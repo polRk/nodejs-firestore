@@ -16,7 +16,7 @@
 
 import {google} from '../protos/firestore_proto_api';
 
-import {ProtobufJsValue} from './types';
+import {ApiMapValue, ProtobufJsValue} from './types';
 import {validateObject} from './validate';
 
 import api = google.firestore.v1;
@@ -194,7 +194,7 @@ export function valueFromJson(fieldValue: ProtobufJsValue): api.IValue {
       };
     }
     case 'mapValue': {
-      const mapValue = {};
+      const mapValue: ApiMapValue = {};
       for (const prop in fieldValue.mapValue!.fields!) {
         if (fieldValue.mapValue!.fields!.hasOwnProperty(prop)) {
           mapValue[prop] = valueFromJson(fieldValue.mapValue!.fields![prop]);
@@ -221,8 +221,9 @@ export function valueFromJson(fieldValue: ProtobufJsValue): api.IValue {
  * format.
  * @return The `firestore.v1.Document` in Protobuf JS format.
  */
-export function documentFromJson(document: api.IDocument): api.IDocument {
-  const result = {};
+export function documentFromJson(document: {[k: string]: ProtobufJsValue}):
+    ApiMapValue {
+  const result: ApiMapValue = {};
 
   for (const prop in document) {
     if (document.hasOwnProperty(prop)) {
